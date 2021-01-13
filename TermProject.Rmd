@@ -1,0 +1,371 @@
+---
+title: 'ECN190 Term Project: Predicting Credit Card Default Risk '
+author: "Jatin Mohanty"
+date: "3/14/2020"
+output:
+  word_document:
+    reference_docx: styleword.docx
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+## Introduction and Literature
+**Question: Can we predict credit card payment default?**
+
+This is an important question especially regarding finance. With the impending recession as a response to the Coronavirus, it is becoming more important to know who is reliable customer and who is not[Wall Street Journal, 2020].Banks use this kind of analysis to determine whether to approve someone for a credit card or loan[Asia Pacific University of Innovation and Technology, 2019]. In this report, only logistic regression is used. However, there are many machine learning methods being utilized such as KNN, SVM, and decision trees[International Journal of Scientific Research, 2018]. This type of analysis can range farther than just predicting default risk for bank and credit card loans. A similar type of analysis could be used for analysis of risk for patients and consumers in healthcare and insurance companies as well. It is also important to get this type of analysis to be correct so people are not accepted when they should not be, possibly leading to worse lives[Hartman, 2018]. Or rejecting them when the should be accepted, having them take their business to other companies. An additional benefit to these analysis is that more responsible lending could lead to a softened impact on people and economies during economic downturns as less people default on loans and are able to endure during recession[Pruden, 2019]
+
+## Data 
+This dataset named "Default of Credit Card Clients Data Set" was taken from the UCI Machine Learning Repository. The data set was donated by the Department of Information Management at Chung Hua University, Taiwan as well as the Department of Civil Engineering at Tamkang University, Taiwan. This data set shows the bank customers credit card payments in Taiwan as well as basic information about each customer(detailed later). There are 30,001 instances with 24 beginning variables. Some limitations to this data set are that for one, it does not completely encapsulate the spending and saving habits of each customer. Additionally, the history of payment is relatively short (6 months) which can be a hinderance when trying to determine a reliable customer. Lastly, this data is time series, so for the sake of this project, it must be transformed to be static data. While time series in itself is very interesting, it is not what I am looking to observe for this project. Lastly, the payment cycles recorded are from 2005, which while still useful, are not as useful as a more recent statement would be. Below is a brief view of the original dataset.
+```{r Data, echo = FALSE}
+credit <- read.csv("projectdata.csv", row.names = 1)
+print(head(credit))
+#transform time series, then remove highly correlated vars
+```
+### Original Variables
+Below is the explanation of the original variables of the dataset:
+
+**ID**: ID of each customer
+
+**LIMIT_BAL**: This integer is the amount of credit in NT dollars given to customer and his/her family
+
+**SEX**: Dummy variable, 1 for male, 2 for female
+
+**EDUCATION**: Indicates level of education, 1 = Graduate School. 2=University, 3=High School, 4=Other
+
+**MARRIAGE**: Indicates marital status, 1= Married, 2 = Single, 3= Other
+
+**AGE**: Age in years
+
+**PAY_0-PAY_6**: History of past payments, -2= No consumption, -1= Pay Duly(Full balance paid off), 0 = Use of revolving credit, 1 = Payment delayed for one month, 2 = payment delayed for 2 months ... and so on until 9 = payment delayed for 9 months. 
+
+**BILL_AMT1-6**: Amount of bill statement from September 2005 -April 2005
+
+**PAY_AMT1-6**: Amount of previous payment in September - April 2005
+
+**default.payment.next.month** = If customer defaults on next payment, 1=yes, 0 =no, This is the response variable
+
+### Data Transformations
+```{r Transform Variables, echo = FALSE}
+library(corrplot)
+#change sex dummy to 0 for male and 1 for female
+credit$SEX[credit$SEX == 1] <- 0
+credit$SEX[credit$SEX == 2] <- 1
+
+#Create dummies for education level(explained in document)
+credit$GRADUATE_SCHOOL <- 0
+credit$UNIVERSITY <- 0
+credit$HIGH_SCHOOL <- 0
+credit$OTHER_SCHOOL <- 0
+
+credit$GRADUATE_SCHOOL[credit$EDUCATION == 1] <- 1
+credit$UNIVERSITY[credit$EDUCATION == 2] <- 1
+credit$HIGH_SCHOOL[credit$EDUCATION ==3 ] <- 1
+credit$OTHER_SCHOOL[credit$EDUCATION >= 4] <- 1
+
+rmv <- ("EDUCATION")
+credit = credit[,-3]
+
+#changing marriage to dummy of 0 and 1
+credit$MARRIAGE[credit$MARRIAGE == 1] <- 0
+credit$MARRIAGE[credit$MARRIAGE >= 2] <- 1
+
+#want to make this not a time series data set, so going to treat PAY, BILL_AMT and PAY_AMT
+#Why I organized this way explained in document
+#sum all of payment status
+credit$PAYMENT_STATUS <- credit$PAY_0 + credit$PAY_2 + credit$PAY_3 + credit$PAY_4 + credit$PAY_5 + credit$PAY_6
+
+delete <- c(5,6,7,8,9, 10)
+credit = credit[,-delete]
+
+credit$BILL_TOTAL <- credit$BILL_AMT1 + credit$BILL_AMT2 + credit$BILL_AMT3 + credit$BILL_AMT4 + credit$BILL_AMT5 + credit$BILL_AMT6
+credit$PAY_TOTAL <- credit$PAY_AMT1 + credit$PAY_AMT3 + credit$PAY_AMT4 + credit$PAY_AMT5 + credit$PAY_AMT2 + credit$PAY_AMT6
+credit$PAY_PERCENT <- 100
+credit$PAY_TOTAL[credit$BILL_TOTAL == 0] <- 0
+credit$PAY_PERCENT <- ((credit$PAY_TOTAL / credit$BILL_TOTAL) * 100)
+credit$PAY_PERCENT[is.na(credit$PAY_PERCENT)] <- 100
+
+
+#renaming outcome variable and putting it at the end for convenience
+credit$DEFAULT <- credit$default.payment.next.month
+
+delete <- c(5,6,7,8,9,10,11,12,13,14,15,16, 17)
+credit = credit[,-delete]
+delete2 <- c(10,11)
+credit = credit[-delete2]
+
+
+m <- cor(credit[,-11], use = "pairwise.complete.obs")
+corrplot(m, method = "circle")
+credit$SEX <- factor(credit$SEX)
+credit$MARRIAGE <- factor(credit$MARRIAGE)
+credit$GRADUATE_SCHOOL <- factor(credit$GRADUATE_SCHOOL)
+credit$UNIVERSITY <- factor(credit$UNIVERSITY)
+credit$HIGH_SCHOOL <- factor(credit$HIGH_SCHOOL)
+credit$OTHER_SCHOOL <- factor(credit$OTHER_SCHOOL)
+credit$DEFAULT <- factor(credit$DEFAULT)
+credit <- credit[-30001,]
+
+
+print(head(credit))
+
+
+
+```
+
+
+
+In the end we end up with 12 variables, if there were changes to variables, they are explained below:
+
+**LIMIT_BAL**: Same
+
+**SEX**: The dummy variable was changed to 0 and 1 instead of 1 and 2. This was done for simplicity and preference.
+
+**MARRIAGE**: I assinged marraige as 1 as well as assigning other to single. So I essentially changed the variable to be a dummy to represent if a person is married or not married. I chose this method because although I recognize being in a relationship with someone is not being single, there are the most financial implications for being married. Additionally, those who are married share finances with their spouse. 
+
+**GRADUATE_SCHOOL, UNIVERSITY, HIGH_SCHOOL, OTHER_SCHOOL**: This set of variables was the most difficult to decide on. Assigning a number value to the level of education is tricky. While implying a higher number could mean more educated, for example test results, in this case I could not make that distinction. As especially with the other category, measuring education level becomes more vague and not quantifiable. Therefore I decided to put these variables as dummies as the highest level of education acheived. I decided to only put a 1 for the highest level of education instead of multiple, for example, someone who went to Graduate School also went to University and High School. I made this choice to avoid multicollinearity as it seems inevitable that each column would be too related. As seen from the correlation matrix, High School and University seem to be correlated, but not too much so I let them stay. In addition to this, the dummies are more accurate because they portray each education level as being equl "distance" to eachother. This is important because if we made the education level continuous, a 4 for Graduate school and a 1 for other school would imply that graduate school is 3 "better" than other school, and although that may be the case, for this project I decided that each level of education is different(like the orange juice brands) and not better or worse than another.Lastly, from the correlation plot above, the negative correlation between graduate school and university can be explained because those who went to graduate school "did not" go to university(in my dataset), so it follows that they are negatively correlated.
+
+**PAYMENT_STATUS**: For this variable, I took all the PAY variables and summed them. I did this mostly to make the data static instead of time series. With this, the value of this shows timeliness the customer pays their credit card bills. The lower the value the better as each postive number represents how many months late the customer was paying in a period. These values can also be negative, so negative represents a better customer in this case as it represents a customer who uses the credit card and pays it off.
+
+**PAY_PERCENT**: This variable was again made as a way to condense the time series data to static. For this, I added the toal bill accumulated in the six month period and the total amount paid off in the six month period and divided the amount paid by the amount billed. This again is used to see the quality of a customer in paying off their bills. Hopefully this metric can be used as a way to predict the dependability of a customer.
+
+**INTERACTION VARIABLES**
+
+I plan to use interaction variables between the **PAY_PERCENT and the PAYMENT_STATUS** as it seems reasonable that the percentage paid of a customer relates to the lateness that they pay with as a customer who pays less is probably more behind on payments. I also want to use a second interaction variable between **LIMIT_BAL and PAYMENT_STATUS**. I believe that these are related as a person with a higher limit balance is most likely more reliable on payments as they would not get a raise in their limit by the credit card issuer if they did not make payments on time. 
+
+**Additional**: I changed binary variables including my response variable to factors for logistic regression. Additionally, I removed the last element, 30001 because it was causing trouble in my k fold cross validation. Lastly, I made the correlation plot to get a better idea of the dataset visually.
+
+##Model
+My base model is as follows below with all the variables from the altered data.
+```{r Model, echo = FALSE}
+default_model <- glm(DEFAULT ~ . + PAY_PERCENT * PAYMENT_STATUS + LIMIT_BAL * PAYMENT_STATUS, data = credit, family = "binomial")
+names <- c("bias", "limit_bal", "sex", "marriage", "age", "graduate_school", "university", "high_school", "other_school", "payment_status", "payment_percent", "Interaction1", "Interaction2")
+barplot(coef(default_model), names.arg = names, xlab = "Coefficients", ylab = "Unit", main = "Coefficients", col = "blue")
+```
+
+###Interpreting Model Results
+Looking at the bar chart for the results of the logistic regression, it is visible that the bias and 6th through 9th and the bias almost cancel out. This makes sense because every sample has at least one level of education. Looking past these larger coefficients, it seems that marriage has abouta -0.2 effect on the odds of the outcome, and payment_status has 0.146 increase on odds. This makes sense as those who are married are typically less likely to default. Additionally, from our scoring system as detailed before for payment_status, the higher the score, the more delinquent payments the customer has; meaning those with higher score are more likely to default. Lastly for the interaction terms, they had little impact as we might have predicted by the lack of correlation shown from the correlation plot. 
+
+
+##Results(Bootstrap, CV, Lasso)
+
+### Bootstrap
+
+```{r Bootstrap, echo = FALSE}
+B = 500
+
+# output vectors
+bias = c()
+limit_bal = c()
+sex = c()
+marriage = c()
+age = c()
+graduate_school = c()
+university = c()
+high_school = c()
+other_school = c()
+payment_status = c()
+pay_percent = c()
+payment_status_times_percent = c()
+limitbal_times_payment_status = c()
+
+# bootstrap experiment
+for (b in 1:B) {
+  
+  # (a) Randomly draw n observations from the original sample with replacement.
+  sample = sample.int(nrow(credit), replace = TRUE )
+  #rows, columns below is getting the 
+  credit_new = credit[sample,]
+  # (b) For the new dataset, compute the estimates using glm() and save the results.
+  #oj_new?
+  #ADD INTERACTION TERMS
+  default_model <- glm(DEFAULT ~ . + PAY_PERCENT * PAYMENT_STATUS + LIMIT_BAL * PAYMENT_STATUS, data = credit_new, family = "binomial")
+  #this is the same as the one shown in discussion but it was giving me errors so I changed it
+  b1 = default_model$coefficients[1]
+  b2 = default_model$coefficients[2]
+  b3 = default_model$coefficients[3]
+  b4 = default_model$coefficients[4]
+  b5 = default_model$coefficients[5]
+  b6 = default_model$coefficients[6]
+  b7 = default_model$coefficients[7]
+  b8 = default_model$coefficients[8]
+  b9 = default_model$coefficients[9]
+  b10 = default_model$coefficients[10]
+  b11 = default_model$coefficients[11]
+  b12 = default_model$coefficients[12]
+  b13 = default_model$coefficients[13]
+  # (You need to save only the coeficients.)
+  bias = c(bias, b1)
+  limit_bal = c(limit_bal, b2)
+  sex = c(sex, b3)
+  marriage = c( marriage , b4)
+  age = c( age , b5)
+  graduate_school = c( graduate_school , b6)
+  university = c( university , b7)
+  high_school = c( high_school , b8)
+  other_school = c( other_school , b9)
+  payment_status = c( payment_status , b10)
+  pay_percent = c( pay_percent , b11)
+  payment_status_times_percent = c( payment_status_times_percent , b12)
+  limitbal_times_payment_status = c( limitbal_times_payment_status , b13)
+  
+}
+std_devs <- c(sd(bias),sd(limit_bal), sd(sex), sd(marriage), sd(age), sd(graduate_school), sd(university), sd(high_school), sd(other_school), sd(payment_status), sd(pay_percent), sd(payment_status_times_percent), sd(limitbal_times_payment_status))
+std_err <- c((std_devs[1]/sqrt(nrow(credit))),(std_devs[2]/sqrt(nrow(credit))),(std_devs[3]/sqrt(nrow(credit))),(std_devs[4]/sqrt(nrow(credit))), (std_devs[5]/sqrt(nrow(credit))), (std_devs[6]/sqrt(nrow(credit))), (std_devs[7]/sqrt(nrow(credit))), (std_devs[8]/sqrt(nrow(credit))), (std_devs[9]/sqrt(nrow(credit))), (std_devs[10]/sqrt(nrow(credit))), (std_devs[11]/sqrt(nrow(credit))),(std_devs[12]/sqrt(nrow(credit))),(std_devs[13]/sqrt(nrow(credit))))
+
+lower_bound <- c( -1.96*std_err[2], -1.96*std_err[3], -1.96*std_err[4], -1.96*std_err[5], -1.96*std_err[6], -1.96*std_err[7],-1.96*std_err[8],-1.96*std_err[9],-1.96*std_err[10],-1.96*std_err[11],-1.96*std_err[12],-1.96*std_err[13])
+upper_bound <- c( +(1.96*std_err[2]), (+1.96*std_err[3]),(+1.96*std_err[4]),(+1.96*std_err[5]),(+1.96*std_err[6]),(+1.96*std_err[7]),(+1.96*std_err[8]),(+1.96*std_err[9]),(+1.96*std_err[10]),(+1.96*std_err[11]),(+1.96*std_err[12]),(+1.96*std_err[13]))
+fit <- c( 0, 0, 0,0,0,0,0,0,0,0,0,0)
+
+df <- data.frame(x =2:13,
+                 F = fit,
+                 L = (lower_bound),
+                 U = (upper_bound))
+
+require(ggplot2)
+ggplot(df, aes(x = x, y = F)) +
+  geom_point(size = 4) +
+  geom_errorbar(aes(ymax = U, ymin = L))
+names <- c("bias", "limit_bal", "sex", "marriage", "age", "graduate_school", "university", "high_school", "other_school", "payment_status", "payment_percent", "Interaction1", "Interaction2")
+barplot(std_err, names.arg = names, xlab = "Coefficients", ylab = "Error", main = "Standard Error", col = "purple")
+
+# display output using hist(), print ses using c() and s()
+
+```
+
+
+The purpose of bootstrap is to estimate the standard errors of each coefficient. This gives us the a better idea of the the range that coefficeints can exist in. Additionally, we can make confidence intervals for each predictor to show the spread for across (in this case) 500 outcomes for the same predictor across 500 draws of n with replacement. I did not make histograms for the distribution of the 500 coefficients to save some space; with that being said, they are present and are useful figure to see how the coefficients are distributed. I opted to more breifly plot the standard error measured from each parameter. I also made a 95% confidence interval plot as to show the spread the coefficients covered. While I recognize I put the mean at zero, I did this in order to get the plots more comprehensible as I was more focused on the ranges rather than the real confidence interval values. When doing this I also considered standardizing the data, but with so many binary variables, I decided against it. 
+
+###Cross-Validation
+
+```{r Cross-Validation, echo = FALSE}
+#helper function taken from Taddy book to measure deviance
+deviance <- function(y, pred, family = c("gaussian", "binomial")){
+  family <- match.arg(family)
+  if(family == "gaussian"){
+    print("hi")
+    return(sum((y-pred)^2))
+  }
+  else{
+    if(is.factor(y)){
+      y <- as.numeric(y)>1
+    }
+   
+    return(-2*sum(y*log(pred) + (1-y) * log(1-pred)))
+  }
+}
+
+R2 <- function(y, pred, family = c("gaussian", "binomial")){
+  fam <- match.arg(family)
+  if(fam == "binomial"){
+    if(is.factor(y)){y <- as.numeric(y)>1 
+                  
+    }
+  }
+  dev <- deviance(y, pred, family = fam)
+  dev0 <- deviance(y,mean(y), family = fam)
+  return(1-dev/dev0)
+}
+
+
+# What is the best p in terms of the K-folded cross validated deviance (with K = 5)?
+
+#original has 30,001 observations, the extra one observation was messing with the cross validation so I removed the last one
+
+n = nrow(credit) # the number of observations
+K = 5 # the number of folds
+
+# vector of fold memberships (random order)
+foldid = rep(1:K,each=ceiling(n/K))[sample(1:n)]
+# empty list for results
+oosdeviances = c()
+devk = c()
+Rsq = c()
+# for loop for cross validataion experiment
+for(k in 1:K){
+  
+  # select training subsample (all data but fold k)
+  train = which(foldid != k)
+  # estimate P models and store oos deviance
+  
+    
+  # fit regression for polynomial p
+  model <- glm(DEFAULT ~ . + PAY_PERCENT * PAYMENT_STATUS + LIMIT_BAL * PAYMENT_STATUS, data = credit[train,], family = "binomial")
+  
+  #model = glm(sales ~ poly(price,p), data = oj[train,])
+  
+  # obtain oos deviance
+  pred = predict(model, newdata=credit[-train,], type = "response")
+  #deviance we are trying to get is
+  # store oos deviance
+  #devk = c(devk, sum(((credit[-train,]$sales - pred)^2)) )
+  devk = c(devk, deviance(credit[-train,]$DEFAULT, pred, "binomial") )
+  Rsq = c(Rsq, R2(credit[-train,]$DEFAULT, pred, "binomial"))
+  
+  
+}
+
+# print min oos deviance using colmeans
+minoosdeviance = which.min(devk)
+
+minoosdeviance = which.min(Rsq)
+
+names <- c("Fold1", "Fold2", "Fold3", "Fold4", "Fold5")
+barplot(devk, names.arg = names, xlab = "Folds", ylab = "Deviance", main = "Deviances", col = "red")
+barplot(Rsq, names.arg = names, xlab = "Folds", ylab = "R2", main = "R2", col = "green")
+      
+```
+
+For the purpose of my project, cross-validation would be used to test the accuracy of the model to see if it should actually be used to approve credit cards or increase limit balances. It is an assurance that the model is working how it should be.  Since we only have a given dataset, we do not know how our model will respond to new data. In an attempt to simulate this, we divide the dataset into k sections, in this case 5. From this, we can train on 4 of the data sets, and see how our model responds to "unseen" data. We repeat this across all the different folds. This gives us an idea of how will our model will perform with real unseen data even though there are imperfections still. This can also be used with Lasso to choose which variables to maintain. To find the measurement for out of sample deviance for a logistic model as we did not cover it as much in class. However, I found the slides measuring deviance as -2 times the log likelihood + Constant and R2 as 1 - deviance(Beta_hat)/deviance(Beta=0). With this I was able to measure my out of sample errors as I saved them across each fold and graphed them above. It can be seen by the graphs that the model did a poor job of predicted unseen data as the highest R2 was 0.1.
+
+###Lasso 
+
+```{r Lasso, echo = FALSE}
+# load packages
+library(gamlr)
+
+
+
+# create design matrix as data frame
+X = data.frame(credit[, -11])
+
+# Run cross validation for 100 values of lambda.
+# Note no sparse matrix because no factor variables.
+cv.default = gamlr(X, credit$DEFAULT,family = "binomial",nlambda=100, lambda.start = Inf, lambda.min.ratio = 0.001)
+
+
+
+#print(cv.sales$gamlr$lambda[aic])
+# path plot 
+plot(cv.default)
+#plot in my pictures for path plot 
+
+
+```
+
+For my Lasso, I used the gamlr library, unfortunately, I was not able to run cross validated Lasso from the gamlr library as it did not work for me with logistic regression. I attempted to look to other libraries that could help and found one called glmnet, although it also produced errors when fed my data. So I was not able to conduct cross-validated Lasso, but I was able to do each separately. 
+
+**Lasso**: Based on a tuning parameter lambda, we can assign a penalty for more coefficients as to prevent overfitting. This penalty is added to the deviance to punish models with many regressors. This is good as it allows us to supposedly predict more accurately because the model is not as dependent on the training data. Additionally, this allows us to limit the amount of predictors we have to provide some more clarity in causal inference.
+
+**Cross-Validated Lasso**: This method is one in which we can find the optimal value for lambda. In this, we cross-validate as before into k folds. From this we test the model with a given lambda on each fold, saving the out of sample deviance of each set of lambda tests. We go through all the lambdas and choose the lambda that results in the lowest out of sample deviance from all the iterations.
+
+Why are Lasso and Cross-Validated Lasso appropriate methods for my question?
+Since my model is trying to predict if a customer is going to default, it is important for the predictions it makes to be correct. With this, implementing Lasso can decrease my out of sample deviance by preventing overfitting of my model. We would like to have the cross-validation method in order to find the optimal lambda to use for the model.
+
+The figure above shows my lasso path plot for my model. As the model goes from right to left more coefficients are added. The dotted vertical line depicts optimal lambda.
+
+
+##Reference List
+
+**1.** Aslam, Uzair & Aziz, Hafiz Ilyas Tariq & Sohail, Asim & Batcha, Nowshath. (2019). An Empirical Study on Loan Default Prediction Models. Journal of Computational and Theoretical Nanoscience. 16. 3483-3488. 10.1166/jctn.2019.8312. 
+
+**2.** Husejinovic, Admel & Keco, Dino & Masetic, Zerina. (2018). Application of Machine Learning Algorithms in Credit Card Default Payment Prediction. International Journal of Scientific Research. 7. 425. 10.15373/22778179#husejinovic. 
+
+**3.** Kayla Hartman. (2018). Towards Ethical Machine Learning. Towards Data Science. https://towardsdatascience.com/towards-ethical-machine-learning-302e580f5815
+
+**4.** John Hilsenrath & Kate Davidson. (2020). U.S. Braces for Sharp Economic Downturn as Coronavirus Bears Down. Wall Street Journal. https://www.wsj.com/articles/u-s-braces-for-sharp-economic-downturn-as-coronavirus-bears-down-11584386207?ns=prod/accounts-wsj
+
+**5.** Adam Pruden. (2019). Can Artifical Intelligence Prevent the Next Financial Crash. Frog Design. https://www.frogdesign.com/designmind/can-artificial-intelligence-prevent-the-next-financial-crash/
+
+##Conclusion
+While my particular model was unable to predict defaults of credit card payments by customers successfully, this is still an important topic worth revisiting. In the future I would like to do this model again with different polynomial values and different interaction terms as well. Additionally, my alterations to the data which I eventually regressed on were probably the source of my errors as I feel I need to research more on how to deal with the education level as well an alternate way to accurately represent the time series data statically. 
